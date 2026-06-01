@@ -384,6 +384,7 @@ function App(){
   const[matchFilter,setMatchFilter]=useState("all");
   const[hideDisq,setHideDisq]=useState(true);
   const[sortBy,setSortBy]=useState("match");
+  const[dateFilter,setDateFilter]=useState("15");
   const[showCfg,setShowCfg]=useState(false);
   const pollRef=useRef(null);
   const prevIds=useRef(new Set());
@@ -395,6 +396,7 @@ function App(){
       if(hideDisq&&match.tier==="disq") return false;
       if(matchFilter!=="all"&&match.tier!==matchFilter) return false;
       if(region!=="all"&&!regionMatch(job,region)) return false;
+      if(dateFilter!=="all"){ const days=parseInt(dateFilter); const cutoff=Date.now()-days*86400000; if(new Date(job.created).getTime()<cutoff) return false; }
       return true;
     });
     if(sortBy==="match") list.sort((a,b)=>MATCH_META[a.match.tier].order-MATCH_META[b.match.tier].order||b.match.score-a.match.score);
@@ -456,8 +458,8 @@ function App(){
         <MatchBadge m={match}/><SrcBadge s={job.source}/><CVBadge v={cv}/>
         {job.salary_min&&<span style={{fontSize:10,color:"#64748b",fontFamily:"monospace"}}>${(job.salary_min/1000).toFixed(0)}k–${(job.salary_max/1000).toFixed(0)}k</span>}
         <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{timeAgo(job.created)}</span>
+        <div onClick={e=>{e.stopPropagation();toggleSave(job);}} style={{fontSize:15,cursor:"pointer",lineHeight:1}}>{saved[job.id]?"🔖":"🤍"}</div>
       </div>
-      <div onClick={e=>{e.stopPropagation();toggleSave(job);}} style={{position:"absolute",bottom:12,right:12,fontSize:15,cursor:"pointer"}}>{saved[job.id]?"🔖":"🤍"}</div>
     </div>);
   };
 
@@ -525,6 +527,12 @@ function App(){
               <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",letterSpacing:"0.1em",marginBottom:7}}>COMPATIBILIDAD</div>
               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                 {[["all","Todos","#475569"],["strong","✅ Fuerte","#059669"],["close","🔶 Cerca","#d97706"],["weak","⬜ Bajo","#94a3b8"]].map(([id,label,color])=><button key={id} onClick={()=>setMatchFilter(id)} style={{background:matchFilter===id?`${color}18`:"#f8fafc",color:matchFilter===id?color:"#94a3b8",border:`1px solid ${matchFilter===id?color+"44":"#e2e8f0"}`,borderRadius:99,fontSize:11,fontWeight:700,padding:"4px 11px",cursor:"pointer"}}>{label} {matchCounts[id]!==undefined?`(${matchCounts[id]})`:""}</button>)}
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",letterSpacing:"0.1em",marginBottom:7}}>📅 ANTIGÜEDAD</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {[["1","Hoy"],["7","7 días"],["15","15 días"],["30","30 días"],["all","Todo"]].map(([v,l])=><button key={v} onClick={()=>setDateFilter(v)} style={{fontSize:11,fontWeight:700,padding:"4px 11px",borderRadius:99,border:"none",cursor:"pointer",background:dateFilter===v?"#0f172a":"#f1f5f9",color:dateFilter===v?"white":"#64748b",transition:"all 0.15s"}}>{l}</button>)}
               </div>
             </div>
             <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",gap:7}}>

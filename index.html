@@ -69,6 +69,7 @@ const SOURCE_META = {
   adzuna:  {name:"Adzuna",   color:"#6366f1",dot:"🟣"},
   remotive:{name:"Remotive", color:"#10b981",dot:"🟢"},
   muse:    {name:"The Muse", color:"#0ea5e9",dot:"🔵"},
+  getonboard:{name:"GetOnBoard", color:"#005267",dot:"🟤"},
   demo:    {name:"Demo",     color:"#94a3b8",dot:"⚪"},
 };
 const APP_STATUS = ["saved","applied","interview","offer","rejected"];
@@ -176,6 +177,31 @@ function regionMatch(job,rid){
   const t=`${job.location?.display_name||""} ${job.description||""}`.toLowerCase();
   if(rid==="remote") return t.includes("remote")||t.includes("worldwide")||t.includes("anywhere");
   return REGIONS.find(r=>r.id===rid)?.keywords?.some(k=>t.includes(k))||false;
+}
+
+// GetOnBoard — API pública sin key, Chile/LATAM
+async function fetchGetOnBoard(query){
+  try{
+    const terms=[query,"estrategia comercial","alianzas estrategicas","partnerships","gerente comercial","business development latam"];
+    const tasks=terms.map(t=>
+      fetch("https://www.getonbrd.com/api/v0/search/jobs?query="+encodeURIComponent(t)+"&per_page=10&expand[]=company",{headers:{Accept:"application/json"}})
+        .then(r=>r.json())
+        .then(d=>(d.data||[]).map(j=>({
+          id:"gob_"+j.id,source:"getonboard",
+          title:j.attributes?.title||"",
+          company:{display_name:j.attributes?.company?.data?.attributes?.name||""},
+          location:{display_name:j.attributes?.remote_modality==="full_remote"?"Remote LATAM":"Chile / LATAM"},
+          description:(j.attributes?.description||j.attributes?.functions||"").replace(/<[^>]*>/g,"").substring(0,800),
+          created:j.attributes?.published_at||new Date().toISOString(),
+          redirect_url:"https://www.getonbrd.com/jobs/"+j.id,
+          salary_min:j.attributes?.min_salary||null,
+          salary_max:j.attributes?.max_salary||null,
+        }))).catch(()=>[])
+    );
+    const all=(await Promise.allSettled(tasks)).flatMap(r=>r.status==="fulfilled"?r.value:[]);
+    const seen=new Set();
+    return all.filter(j=>{if(!j.title||seen.has(j.id))return false;seen.add(j.id);return true;});
+  }catch{return[];}
 }
 
 // ─── BÚSQUEDA MULTI-TÉRMINO ───────────────────────────────────────────────────
@@ -386,7 +412,7 @@ function App(){
   const[newCount,setNewCount]=useState(0);
   const[appId]=useState("1b9c423b");
   const[appKey]=useState("46b3df50bfda17aa4077d35ab942f857");
-  const[sources,setSources]=useState(["remotive","muse","adzuna"]);
+  const[sources,setSources]=useState(["remotive","muse","adzuna","getonboard"]);
   const[srcErrors,setSrcErrors]=useState({});
   const[region,setRegion]=useState("all");
   const[matchFilter,setMatchFilter]=useState("all");
@@ -423,6 +449,7 @@ function App(){
     const res=[],errs={},tasks=[];
     if(sources.includes("remotive")) tasks.push(fetchRemotive(query).then(r=>res.push(...r)).catch(()=>{errs.remotive="No disponible";}));
     if(sources.includes("muse"))     tasks.push(fetchMuse(query).then(r=>res.push(...r)).catch(()=>{errs.muse="No disponible";}));
+    if(sources.includes("getonboard")) tasks.push(fetchGetOnBoard(query).then(r=>res.push(...r)).catch(()=>{errs.getonboard="No disponible";}));
     if(sources.includes("adzuna"))   tasks.push(fetchAdzunaMulti(country,appId,appKey).then(r=>res.push(...r)).catch(()=>{errs.adzuna="Error API";}));
     await Promise.allSettled(tasks);
     setSrcErrors(errs);

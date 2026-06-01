@@ -112,26 +112,62 @@ function isRecent(d){return(Date.now()-new Date(d).getTime())/3600000<24;}
 
 function computeMatch(job){
   const full=`${job.title||""} ${job.description||""}`.toLowerCase();
+  const titleOnly=(job.title||"").toLowerCase();
+
+  // Hard disqualifier: idioma no disponible
   for(const kws of HARD_DISQ) if(kws.some(k=>full.includes(k))) return{tier:"disq",score:0,reasons:["Requiere idioma no disponible"]};
-  let pen=0;
-  const em=full.match(/(\d+)\+?\s*years?\s*(of\s*)?(experience|exp)/i);
-  if(em){const r=parseInt(em[1]);if(r>CANDIDATE.yearsExperience+2)pen=-30;else if(r>CANDIDATE.yearsExperience)pen=-10;}
-  const sh=CANDIDATE.hardSkills.filter(s=>full.includes(s));
-  const ih=CANDIDATE.industries.filter(i=>full.includes(i));
-  let visa=0,visaNote=null;
-  const isIntl=!full.includes("chile")&&!full.includes("santiago");
-  if(isIntl&&CANDIDATE.openToRelocation){
-    if(VISA_NEG.some(k=>full.includes(k))){pen-=25;visaNote="⚠️ Posible restricción visa";}
-    else if(VISA_POS.some(k=>full.includes(k))){visa=15;visaNote="✈️ Visa/relocation friendly";}
-    else visaNote="Visa: no mencionada";
+
+  let score=20; // base score — todos parten con algo
+
+  // ── Título relevante (peso alto) ──
+  const titleKeywords=["alliance","partnership","commercial","strategy","revenue","business development","bd manager","channel","distribution"];
+  const titleHits=titleKeywords.filter(k=>titleOnly.includes(k));
+  score+=titleHits.length*10;
+
+  // ── Skills (expandidas para capturar más variantes) ──
+  const expandedSkills=[
+    ...CANDIDATE.hardSkills,
+    "alliance","partner","strategic","commercial","revenue management",
+    "b2b","account management","vendor","stakeholder","negotiat",
+    "analytics","reporting","dashboard","bi","business intelligence",
+    "product","growth","gtm","go-to-market","crm","salesforce",
+  ];
+  const sh=[...new Set(expandedSkills.filter(s=>full.includes(s)))];
+  score+=Math.min(sh.length*6,30);
+
+  // ── Industria ──
+  const expandedIndustries=[...CANDIDATE.industries,"transport","cargo","loyalty","distribution","hospitality","tech","saas","startup"];
+  const ih=[...new Set(expandedIndustries.filter(i=>full.includes(i)))];
+  score+=Math.min(ih.length*5,15);
+
+  // ── Experiencia requerida ──
+  let expNote=null;
+  const em=full.match(/(\d+)\+?\s*(?:to\s*\d+\s*)?years?\s*(of\s*)?(experience|exp)/i);
+  if(em){
+    const req=parseInt(em[1]);
+    if(req>CANDIDATE.yearsExperience+3){score-=25;expNote=`Requiere ${req} años (tienes ${CANDIDATE.yearsExperience})`;}
+    else if(req>CANDIDATE.yearsExperience){score-=8;expNote=`${req} años requeridos — cerca (tienes ${CANDIDATE.yearsExperience})`;}
+    else expNote=`Exp: ${req} años requeridos ✓`;
   }
-  const score=Math.max(0,Math.min(100,sh.length*12+ih.length*10+visa+pen));
+
+  // ── Visa / relocation ──
+  let visaNote=null;
+  const isIntl=!full.includes("chile")&&!full.includes("santiago");
+  if(isIntl){
+    if(VISA_NEG.some(k=>full.includes(k))){score-=20;visaNote="⚠️ Posible restricción visa";}
+    else if(VISA_POS.some(k=>full.includes(k))){score+=10;visaNote="✈️ Visa/relocation friendly";}
+  }
+
+  score=Math.max(0,Math.min(100,score));
   const reasons=[];
-  if(sh.length) reasons.push(`Skills: ${sh.slice(0,3).join(", ")}`);
+  if(titleHits.length) reasons.push(`Título relevante: ${titleHits.slice(0,2).join(", ")}`);
+  const coreSkills=CANDIDATE.hardSkills.filter(s=>full.includes(s));
+  if(coreSkills.length) reasons.push(`Skills clave: ${coreSkills.slice(0,3).join(", ")}`);
   if(ih.length) reasons.push(`Industria: ${ih.slice(0,2).join(", ")}`);
-  if(em&&pen<0) reasons.push(`Exp requerida: ${em[1]} años (tienes ${CANDIDATE.yearsExperience})`);
+  if(expNote) reasons.push(expNote);
   if(visaNote) reasons.push(visaNote);
-  const tier=score>=55?"strong":score>=30?"close":"weak";
+
+  const tier=score>=60?"strong":score>=38?"close":"weak";
   return{tier,score,reasons};
 }
 
@@ -142,22 +178,96 @@ function regionMatch(job,rid){
   return REGIONS.find(r=>r.id===rid)?.keywords?.some(k=>t.includes(k))||false;
 }
 
+// ─── BÚSQUEDA MULTI-TÉRMINO ───────────────────────────────────────────────────
+// Términos paralelos que cubren todo el perfil de Agustín
+const SEARCH_TERMS = [
+  "strategic alliances manager",
+  "partnerships manager",
+  "commercial strategy manager",
+  "business development aviation",
+  "revenue partnerships manager",
+  "airline alliances",
+  "joint venture manager",
+];
+// Países Adzuna a buscar siempre (Chile no tiene código propio, se busca via ar+br+es)
+const ADZUNA_COUNTRIES_ALWAYS = ["gb","us","au"];
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function fetchAdzuna(q,country,id,key){
-  const r=await fetch(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${id}&app_key=${key}&results_per_page=20&what=${encodeURIComponent(q)}&sort_by=date`);
-  const d=await r.json();
-  return(d.results||[]).map(j=>({...j,id:`az_${j.id}`,source:"adzuna"}));
+  try{
+    const r=await fetch(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${id}&app_key=${key}&results_per_page=15&what=${encodeURIComponent(q)}&sort_by=date`);
+    const d=await r.json();
+    return(d.results||[]).map(j=>({...j,id:`az_${j.id}_${country}`,source:"adzuna"}));
+  }catch{return[];}
 }
+
+// Busca en múltiples términos Y múltiples países en paralelo
+async function fetchAdzunaMulti(primaryCountry,id,key){
+  const countries=primaryCountry==="cl"
+    ?["ar","br","es","gb","us"]  // Chile: busca en vecinos + internacionales
+    :primaryCountry==="all"
+    ?["gb","us","au","ca","es"]  // Global: los 5 más grandes
+    :[...new Set([primaryCountry,...ADZUNA_COUNTRIES_ALWAYS])];
+
+  // Toma los primeros 4 términos para no agotar el límite diario (100/día)
+  const terms=SEARCH_TERMS.slice(0,4);
+  const tasks=[];
+  for(const c of countries){
+    for(const t of terms){
+      tasks.push(fetchAdzuna(t,c,id,key));
+    }
+  }
+  const results=await Promise.allSettled(tasks);
+  const all=results.flatMap(r=>r.status==="fulfilled"?r.value:[]);
+  // Dedup por título+empresa
+  const seen=new Set();
+  return all.filter(j=>{
+    const key=`${j.title?.toLowerCase().trim()}_${j.company?.display_name?.toLowerCase().trim()}`;
+    if(seen.has(key))return false;seen.add(key);return true;
+  });
+}
+
 async function fetchRemotive(q){
-  const r=await fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=20`);
-  const d=await r.json();
-  return(d.jobs||[]).map(j=>({id:`rm_${j.id}`,source:"remotive",title:j.title,company:{display_name:j.company_name},location:{display_name:j.candidate_required_location||"Remote"},description:(j.description||"").replace(/<[^>]*>/g,"").substring(0,800),created:j.publication_date,redirect_url:j.url}));
+  // Busca con múltiples términos en remotive
+  const terms=["partnerships","alliances","commercial strategy","business development"];
+  const tasks=terms.map(t=>
+    fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(t)}&limit=15`)
+      .then(r=>r.json()).then(d=>(d.jobs||[]).map(j=>({
+        id:`rm_${j.id}`,source:"remotive",
+        title:j.title,company:{display_name:j.company_name},
+        location:{display_name:j.candidate_required_location||"Remote"},
+        description:(j.description||"").replace(/<[^>]*>/g,"").substring(0,800),
+        created:j.publication_date,redirect_url:j.url
+      }))).catch(()=>[])
+  );
+  const all=(await Promise.allSettled(tasks)).flatMap(r=>r.status==="fulfilled"?r.value:[]);
+  const seen=new Set();
+  return all.filter(j=>{if(seen.has(j.id))return false;seen.add(j.id);return true;});
 }
+
 async function fetchMuse(q){
-  const r=await fetch(`https://www.themuse.com/api/public/jobs?descending=true&page=1&api_key=demo&category=Business%20%26%20Strategy&level=Senior%20Level&level=Mid%20Level`);
-  const d=await r.json();
-  const w=q.toLowerCase().split(" ")[0];
-  return(d.results||[]).filter(j=>j.name.toLowerCase().includes(w)||(j.contents||"").toLowerCase().includes(w)).slice(0,10).map(j=>({id:`mu_${j.id}`,source:"muse",title:j.name,company:{display_name:j.company?.name||""},location:{display_name:j.locations?.map(l=>l.name).join(", ")||"Global"},description:(j.contents||"").replace(/<[^>]*>/g,"").substring(0,800),created:j.publication_date||new Date(Date.now()-86400000).toISOString(),redirect_url:j.refs?.landing_page||"#"}));
+  // Busca en múltiples categorías relevantes
+  const cats=["Business%20%26%20Strategy","Project%20Management","Operations"];
+  const tasks=cats.map(cat=>
+    fetch(`https://www.themuse.com/api/public/jobs?descending=true&page=1&api_key=demo&category=${cat}&level=Senior%20Level&level=Mid%20Level`)
+      .then(r=>r.json()).then(d=>(d.results||[]).map(j=>({
+        id:`mu_${j.id}`,source:"muse",title:j.name,
+        company:{display_name:j.company?.name||""},
+        location:{display_name:j.locations?.map(l=>l.name).join(", ")||"Global"},
+        description:(j.contents||"").replace(/<[^>]*>/g,"").substring(0,800),
+        created:j.publication_date||new Date(Date.now()-86400000).toISOString(),
+        redirect_url:j.refs?.landing_page||"#"
+      }))).catch(()=>[])
+  );
+  const all=(await Promise.allSettled(tasks)).flatMap(r=>r.status==="fulfilled"?r.value:[]);
+  // Filtra los más relevantes para el perfil
+  const keywords=["partnership","alliance","strategy","commercial","business development","revenue","aviation","travel"];
+  const seen=new Set();
+  return all.filter(j=>{
+    if(seen.has(j.id))return false;seen.add(j.id);
+    const t=(j.title+j.description).toLowerCase();
+    return keywords.some(k=>t.includes(k));
+  });
 }
 async function callClaude(sys,usr){
   const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[{role:"user",content:usr}]})});
@@ -252,7 +362,7 @@ function JobModal({job,match,onClose,onStatus,status,onSave,saved}){
 function App(){
   const[tab,setTab]=useState("search");
   const[query,setQuery]=useState("strategic alliances manager");
-  const[country,setCountry]=useState("gb");
+  const[country,setCountry]=useState("cl");
   const[jobs,setJobs]=useState(MOCK_JOBS);
   const[loading,setLoading]=useState(false);
   const[sel,setSel]=useState(null);
@@ -299,10 +409,16 @@ function App(){
     const res=[],errs={},tasks=[];
     if(sources.includes("remotive")) tasks.push(fetchRemotive(query).then(r=>res.push(...r)).catch(()=>{errs.remotive="No disponible";}));
     if(sources.includes("muse"))     tasks.push(fetchMuse(query).then(r=>res.push(...r)).catch(()=>{errs.muse="No disponible";}));
-    if(sources.includes("adzuna"))   tasks.push(fetchAdzuna(query,country,appId,appKey).then(r=>res.push(...r)).catch(()=>{errs.adzuna="Error API";}));
+    if(sources.includes("adzuna"))   tasks.push(fetchAdzunaMulti(country,appId,appKey).then(r=>res.push(...r)).catch(()=>{errs.adzuna="Error API";}));
     await Promise.allSettled(tasks);
     setSrcErrors(errs);
-    const sorted=res.sort((a,b)=>new Date(b.created)-new Date(a.created));
+    // Dedup global por título+empresa
+    const seen=new Set();
+    const unique=res.filter(j=>{
+      const k=`${(j.title||"").toLowerCase().trim()}_${(j.company?.display_name||"").toLowerCase().trim()}`;
+      if(seen.has(k))return false;seen.add(k);return true;
+    });
+    const sorted=unique.sort((a,b)=>new Date(b.created)-new Date(a.created));
     const final=sorted.length>0?sorted:MOCK_JOBS;
     if(silent){const n=final.filter(j=>!prevIds.current.has(j.id));if(n.length)setNewCount(c=>c+n.length);}
     prevIds.current=new Set(final.map(j=>j.id));
@@ -373,7 +489,7 @@ function App(){
         <div style={{display:"flex",gap:6}}>
           <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runSearch()} placeholder="cargo, skills, empresa..." style={{flex:1,padding:"10px 13px",borderRadius:"9px 9px 0 0",border:"none",borderBottom:"2px solid #6366f1",background:"rgba(255,255,255,0.08)",color:"white",fontSize:13,outline:"none"}}/>
           <select value={country} onChange={e=>setCountry(e.target.value)} style={{padding:"10px 8px",borderRadius:"9px 9px 0 0",border:"none",borderBottom:"2px solid #6366f1",background:"rgba(255,255,255,0.08)",color:"white",fontSize:12,cursor:"pointer",outline:"none"}}>
-            {[["us","🇺🇸 USA"],["gb","🇬🇧 UK"],["au","🇦🇺 Australia"],["ca","🇨🇦 Canada"],["de","🇩🇪 Germany"],["es","🇪🇸 Spain"],["br","🇧🇷 Brazil"]].map(([c,n])=><option key={c} value={c} style={{background:"#1e293b"}}>{n}</option>)}
+            {[["cl","🇨🇱 Chile"],["us","🇺🇸 USA"],["gb","🇬🇧 UK"],["au","🇦🇺 Australia"],["ca","🇨🇦 Canada"],["de","🇩🇪 Germany"],["es","🇪🇸 Spain"],["br","🇧🇷 Brazil"],["all","🌐 Global"]].map(([c,n])=><option key={c} value={c} style={{background:"#1e293b"}}>{n}</option>)}
           </select>
           <button onClick={()=>runSearch()} disabled={loading} style={{background:"#6366f1",color:"white",border:"none",borderRadius:"9px 9px 0 0",padding:"10px 16px",fontSize:13,fontWeight:700,cursor:"pointer",minWidth:65}}>
             {loading?<span style={{display:"inline-block",width:13,height:13,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"white",animation:"spin 0.7s linear infinite"}}/>:"Buscar"}

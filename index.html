@@ -269,16 +269,21 @@ async function fetchMuse(q){
     return keywords.some(k=>t.includes(k));
   });
 }
-const GEMINI_KEY="AIzaSyAb8RN6LLp41BXyhQYw788mSnZDCfRsfqL0_3_od7wZGaX4dvew";
+const GROQ_KEY="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";
 async function callClaude(sys,usr){
   try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({contents:[{parts:[{text:`${sys}\n\n${usr}`}]}],generationConfig:{maxOutputTokens:1000}})
+    const r=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${GROQ_KEY}`},
+      body:JSON.stringify({
+        model:"llama-3.1-8b-instant",
+        max_tokens:1000,
+        messages:[{role:"system",content:sys},{role:"user",content:usr}]
+      })
     });
     const d=await r.json();
-    if(d.error) return `Error API: ${d.error.message}`;
-    return d.candidates?.[0]?.content?.parts?.[0]?.text||"Sin respuesta.";
+    if(d.error) return `Error: ${d.error.message}`;
+    return d.choices?.[0]?.message?.content||"Sin respuesta.";
   }catch(e){return `Error: ${e.message}`;}
 }
 

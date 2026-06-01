@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Job Hunt — Agustín Preuss</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@500;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:#f8fafc;color:#0f172a;}
+  ::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes slideUp{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+  input,select,button{font-family:inherit;}
+  a{color:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+// ─── PERFIL ───────────────────────────────────────────────────────────────────
+const CANDIDATE = {
+  name: "Agustín Preuss",
+  title: "Commercial Strategy & Strategic Alliances Manager",
+  yearsExperience: 5,
+  university: "Pontificia Universidad Católica de Chile (#1 LatAm)",
+  languages: ["spanish","english"],
+  hardSkills: ["strategic alliances","commercial strategy","kpi","joint venture","revenue","interline","codeshare","excel","sql","data analysis","partnerships","nps","fintech","product manager"],
+  industries: ["aviation","airline","fintech","travel","logistics","consulting"],
+  openToRelocation: true,
+};
+
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
+const CV_VERSIONS = {
+  en_us:{ label:"EN – USA/Canada", flag:"🇺🇸", triggers:["us","usa","canada","united states","new york","san francisco","toronto","chicago","boston","seattle","remote"] },
+  cl:   { label:"CL – Chile",      flag:"🇨🇱", triggers:["chile","santiago"] },
+  intl: { label:"Internacional",   flag:"🌍",  triggers:["uk","spain","europe","australia","germany","france","brazil","argentina","mexico","london","madrid","berlin","amsterdam","dubai","singapore"] },
+};
+
+const REGIONS = [
+  { id:"all",    label:"Todo el mundo", icon:"🌐" },
+  { id:"remote", label:"Remote",        icon:"💻" },
+  { id:"latam",  label:"LATAM",         icon:"🌎", keywords:["chile","colombia","peru","argentina","mexico","brazil","brasil","bogota","lima","buenos aires","santiago"] },
+  { id:"europe", label:"Europa",        icon:"🇪🇺", keywords:["uk","spain","germany","france","netherlands","sweden","switzerland","portugal","london","madrid","berlin","amsterdam","paris","dublin","lisbon"] },
+  { id:"na",     label:"Norteamérica",  icon:"🇺🇸", keywords:["united states","canada","usa","new york","san francisco","chicago","toronto","boston","seattle","miami"] },
+  { id:"apac",   label:"APAC",          icon:"🌏", keywords:["australia","singapore","hong kong","japan","india","sydney","melbourne","tokyo"] },
+  { id:"me",     label:"Middle East",   icon:"🌴", keywords:["dubai","uae","qatar","saudi","abu dhabi","riyadh"] },
+];
+
+const HARD_DISQ = [
+  ["fluent french","native french","french required","french mandatory","french speaker","c1 french"],
+  ["fluent german","native german","german required","german mandatory","deutsch fließend"],
+  ["mandarin required","chinese required","fluent mandarin","native chinese"],
+  ["portuguese required","portuguese mandatory","native portuguese"],
+  ["japanese required","japanese mandatory","fluent japanese","jlpt"],
+  ["italian required","italian mandatory","fluent italian","native italian"],
+];
+
+const VISA_POS = ["visa sponsorship","relocation","open to international","global candidates","international applicants","visa support","sponsor","worldwide","willing to relocate"];
+const VISA_NEG = ["only local","no sponsorship","must already","authorized to work","must have right to work","no relocation","local candidates only","must be based in","citizen only","permanent resident"];
+
+const SOURCE_META = {
+  adzuna:  {name:"Adzuna",   color:"#6366f1",dot:"🟣"},
+  remotive:{name:"Remotive", color:"#10b981",dot:"🟢"},
+  muse:    {name:"The Muse", color:"#0ea5e9",dot:"🔵"},
+  demo:    {name:"Demo",     color:"#94a3b8",dot:"⚪"},
+};
+const APP_STATUS = ["saved","applied","interview","offer","rejected"];
+const STATUS_META = {
+  saved:    {label:"Guardado",   color:"#6366f1",bg:"#eef2ff"},
+  applied:  {label:"Postulado",  color:"#0ea5e9",bg:"#e0f2fe"},
+  interview:{label:"Entrevista", color:"#f59e0b",bg:"#fef3c7"},
+  offer:    {label:"Oferta 🎉",  color:"#10b981",bg:"#d1fae5"},
+  rejected: {label:"Rechazado",  color:"#ef4444",bg:"#fee2e2"},
+};
+const MATCH_META = {
+  strong:{label:"Match fuerte",color:"#059669",bg:"#d1fae5",icon:"✅",order:0},
+  close: {label:"Muy cerca",  color:"#d97706",bg:"#fef3c7",icon:"🔶",order:1},
+  weak:  {label:"Bajo match", color:"#94a3b8",bg:"#f1f5f9",icon:"⬜",order:2},
+  disq:  {label:"No aplica",  color:"#ef4444",bg:"#fee2e2",icon:"❌",order:3},
+};
+
+const MOCK_JOBS = [
+  {id:"m1",source:"demo",title:"Strategic Alliances Manager – APAC",company:{display_name:"American Airlines"},location:{display_name:"Sydney, Australia"},description:"Lead strategic airline partnerships in the APAC region. Manage interline agreements, codeshare optimization, and joint venture revenue. 5+ years experience in aviation alliances required. Visa sponsorship available for exceptional candidates.",created:new Date(Date.now()-2*3600000).toISOString(),redirect_url:"#",salary_min:120000,salary_max:150000},
+  {id:"m2",source:"demo",title:"Commercial Strategy Lead",company:{display_name:"McKinsey & Company"},location:{display_name:"New York, United States"},description:"Drive commercial transformation for major airline clients. Revenue optimization, partnership strategy, and KPI frameworks. 4+ years experience. Open to international candidates willing to relocate.",created:new Date(Date.now()-5*3600000).toISOString(),redirect_url:"#",salary_min:140000,salary_max:180000},
+  {id:"m3",source:"demo",title:"Partnerships & Alliances Manager",company:{display_name:"IAG – Iberia"},location:{display_name:"Madrid, Spain"},description:"Manage strategic airline partnerships. Interline, codeshare and joint ventures. Iberia or LATAM experience a plus. Bilingual Spanish/English. Fluent French also required. 7+ years experience.",created:new Date(Date.now()-20*3600000).toISOString(),redirect_url:"#",salary_min:65000,salary_max:85000},
+  {id:"m4",source:"demo",title:"Revenue & Alliances Analyst",company:{display_name:"Copa Airlines"},location:{display_name:"Santiago, Chile"},description:"Análisis de revenue y gestión de alianzas estratégicas. KPIs, reporting y optimización de acuerdos comerciales. Excel avanzado y SQL requerido. 3+ años experiencia.",created:new Date(Date.now()-48*3600000).toISOString(),redirect_url:"#"},
+  {id:"m5",source:"demo",title:"Head of Partnerships – Travel Tech",company:{display_name:"Booking.com"},location:{display_name:"Amsterdam, Netherlands"},description:"Lead global airline and hotel partnership strategy. Commercial negotiations and distribution agreements. Aviation background preferred. 5 years experience. Relocation package offered. International candidates welcome.",created:new Date(Date.now()-1*3600000).toISOString(),redirect_url:"#",salary_min:110000,salary_max:140000},
+  {id:"m6",source:"demo",title:"Strategy Manager – Aviation",company:{display_name:"Oliver Wyman"},location:{display_name:"Dubai, UAE"},description:"Support airline clients on commercial strategy and revenue management. Strong analytical background. Must be authorized to work in UAE. Local candidates only, no sponsorship available.",created:new Date(Date.now()-72*3600000).toISOString(),redirect_url:"#"},
+  {id:"m7",source:"demo",title:"Analyste Stratégie Commerciale",company:{display_name:"Air France"},location:{display_name:"Paris, France"},description:"Gestion des alliances stratégiques. Fluent French required. Native French speaker preferred. 4 ans d'expérience requis.",created:new Date(Date.now()-12*3600000).toISOString(),redirect_url:"#"},
+];
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function detectCV(job){
+  const t=`${job.location?.display_name||""} ${job.title||""}`.toLowerCase();
+  for(const[k,v]of Object.entries(CV_VERSIONS)) if(v.triggers.some(x=>t.includes(x))) return k;
+  return "intl";
+}
+function timeAgo(d){
+  const h=(Date.now()-new Date(d).getTime())/3600000;
+  if(h<1) return "hace <1h ⚡";
+  if(h<24) return `hace ${Math.floor(h)}h`;
+  return `hace ${Math.floor(h/24)}d`;
+}
+function isRecent(d){return(Date.now()-new Date(d).getTime())/3600000<24;}
+
+function computeMatch(job){
+  const full=`${job.title||""} ${job.description||""}`.toLowerCase();
+  for(const kws of HARD_DISQ) if(kws.some(k=>full.includes(k))) return{tier:"disq",score:0,reasons:["Requiere idioma no disponible"]};
+  let pen=0;
+  const em=full.match(/(\d+)\+?\s*years?\s*(of\s*)?(experience|exp)/i);
+  if(em){const r=parseInt(em[1]);if(r>CANDIDATE.yearsExperience+2)pen=-30;else if(r>CANDIDATE.yearsExperience)pen=-10;}
+  const sh=CANDIDATE.hardSkills.filter(s=>full.includes(s));
+  const ih=CANDIDATE.industries.filter(i=>full.includes(i));
+  let visa=0,visaNote=null;
+  const isIntl=!full.includes("chile")&&!full.includes("santiago");
+  if(isIntl&&CANDIDATE.openToRelocation){
+    if(VISA_NEG.some(k=>full.includes(k))){pen-=25;visaNote="⚠️ Posible restricción visa";}
+    else if(VISA_POS.some(k=>full.includes(k))){visa=15;visaNote="✈️ Visa/relocation friendly";}
+    else visaNote="Visa: no mencionada";
+  }
+  const score=Math.max(0,Math.min(100,sh.length*12+ih.length*10+visa+pen));
+  const reasons=[];
+  if(sh.length) reasons.push(`Skills: ${sh.slice(0,3).join(", ")}`);
+  if(ih.length) reasons.push(`Industria: ${ih.slice(0,2).join(", ")}`);
+  if(em&&pen<0) reasons.push(`Exp requerida: ${em[1]} años (tienes ${CANDIDATE.yearsExperience})`);
+  if(visaNote) reasons.push(visaNote);
+  const tier=score>=55?"strong":score>=30?"close":"weak";
+  return{tier,score,reasons};
+}
+
+function regionMatch(job,rid){
+  if(rid==="all") return true;
+  const t=`${job.location?.display_name||""} ${job.description||""}`.toLowerCase();
+  if(rid==="remote") return t.includes("remote")||t.includes("worldwide")||t.includes("anywhere");
+  return REGIONS.find(r=>r.id===rid)?.keywords?.some(k=>t.includes(k))||false;
+}
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function fetchAdzuna(q,country,id,key){
+  const r=await fetch(`https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${id}&app_key=${key}&results_per_page=20&what=${encodeURIComponent(q)}&sort_by=date`);
+  const d=await r.json();
+  return(d.results||[]).map(j=>({...j,id:`az_${j.id}`,source:"adzuna"}));
+}
+async function fetchRemotive(q){
+  const r=await fetch(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q)}&limit=20`);
+  const d=await r.json();
+  return(d.jobs||[]).map(j=>({id:`rm_${j.id}`,source:"remotive",title:j.title,company:{display_name:j.company_name},location:{display_name:j.candidate_required_location||"Remote"},description:(j.description||"").replace(/<[^>]*>/g,"").substring(0,800),created:j.publication_date,redirect_url:j.url}));
+}
+async function fetchMuse(q){
+  const r=await fetch(`https://www.themuse.com/api/public/jobs?descending=true&page=1&api_key=demo&category=Business%20%26%20Strategy&level=Senior%20Level&level=Mid%20Level`);
+  const d=await r.json();
+  const w=q.toLowerCase().split(" ")[0];
+  return(d.results||[]).filter(j=>j.name.toLowerCase().includes(w)||(j.contents||"").toLowerCase().includes(w)).slice(0,10).map(j=>({id:`mu_${j.id}`,source:"muse",title:j.name,company:{display_name:j.company?.name||""},location:{display_name:j.locations?.map(l=>l.name).join(", ")||"Global"},description:(j.contents||"").replace(/<[^>]*>/g,"").substring(0,800),created:j.publication_date||new Date(Date.now()-86400000).toISOString(),redirect_url:j.refs?.landing_page||"#"}));
+}
+async function callClaude(sys,usr){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[{role:"user",content:usr}]})});
+  const d=await r.json();
+  return d.content?.[0]?.text||"";
+}
+
+// ─── BADGES ───────────────────────────────────────────────────────────────────
+function CVBadge({v}){const x=CV_VERSIONS[v];return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:"#1e293b",color:"#e2e8f0",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>{x.flag} {x.label}</span>;}
+function SrcBadge({s}){const x=SOURCE_META[s]||SOURCE_META.demo;return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:`${x.color}18`,color:x.color,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4}}>{x.dot} {x.name}</span>;}
+function MatchBadge({m}){if(!m)return null;const x=MATCH_META[m.tier];return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:x.bg,color:x.color,fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:4}}>{x.icon} {x.label}{m.tier!=="disq"?` ${m.score}%`:""}</span>;}
+
+// ─── AI PANEL ─────────────────────────────────────────────────────────────────
+function AIPanel({job,type,onClose}){
+  const[loading,setLoading]=useState(true);
+  const[content,setContent]=useState("");
+  useEffect(()=>{
+    const cv=detectCV(job);const lang=cv==="cl"?"Spanish":"English";
+    let sys,msg;
+    if(type==="cover"){
+      sys=`Expert career coach. Write cover letter in ${lang}. Max 280 words. Specific and tailored. Candidate: ${JSON.stringify(CANDIDATE)}`;
+      msg=`Cover letter for:\nTitle: ${job.title}\nCompany: ${job.company?.display_name}\nLocation: ${job.location?.display_name}\nDescription: ${(job.description||"").substring(0,600)}\nHighlight LATAM Airlines Delta JV achievements.`;
+    }else{
+      sys=`ATS resume optimizer. Output in ${lang}. Candidate: ${JSON.stringify(CANDIDATE)}`;
+      msg=`Job analysis:\nTitle: ${job.title}\nCompany: ${job.company?.display_name}\nDescription: ${(job.description||"").substring(0,600)}\n\nProvide:\n1. Top 3 ATS keywords\n2. Achievements to highlight\n3. Rewordings\n4. Match score (0-100) with justification`;
+    }
+    callClaude(sys,msg).then(t=>{setContent(t);setLoading(false);}).catch(()=>{setContent("Error conectando con la IA.");setLoading(false);});
+  },[]);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}}>
+      <div style={{background:"white",borderRadius:16,padding:28,maxWidth:600,width:"100%",maxHeight:"85vh",overflow:"auto",position:"relative",boxShadow:"0 25px 60px rgba(0,0,0,0.25)"}}>
+        <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#64748b"}}>✕</button>
+        <div style={{fontSize:11,fontWeight:800,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>✦ {type==="cover"?"COVER LETTER IA":"OPTIMIZACIÓN CV IA"}</div>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:2}}>{job.title}</div>
+        <div style={{fontSize:12,color:"#64748b",marginBottom:18}}>{job.company?.display_name}</div>
+        {loading?<div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 0",gap:10}}><div style={{width:32,height:32,borderRadius:"50%",border:"3px solid #e2e8f0",borderTopColor:"#6366f1",animation:"spin 0.8s linear infinite"}}/><div style={{fontSize:12,color:"#94a3b8"}}>Generando con IA...</div></div>
+        :<><div style={{background:"#f8fafc",borderRadius:10,padding:18,fontSize:13.5,lineHeight:1.75,color:"#334155",whiteSpace:"pre-wrap"}}>{content}</div><button onClick={()=>navigator.clipboard.writeText(content)} style={{marginTop:14,background:"#6366f1",color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:600,cursor:"pointer"}}>📋 Copiar</button></>}
+      </div>
+    </div>
+  );
+}
+
+// ─── JOB MODAL ────────────────────────────────────────────────────────────────
+function JobModal({job,match,onClose,onStatus,status,onSave,saved}){
+  const[ai,setAi]=useState(null);
+  const cv=detectCV(job);
+  return(<>
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200,padding:"0 10px"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:700,maxHeight:"92vh",overflow:"auto",boxShadow:"0 -8px 60px rgba(0,0,0,0.25)",animation:"slideUp 0.22s ease"}}>
+        <div style={{background:"linear-gradient(135deg,#0f172a,#1e293b)",padding:"24px 24px 18px",borderRadius:"20px 20px 0 0",color:"white"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div style={{flex:1}}>
+              {isRecent(job.created)&&<div style={{fontSize:10,fontWeight:800,color:"#93c5fd",letterSpacing:"0.1em",marginBottom:4}}>⚡ PUBLICADO RECIENTEMENTE</div>}
+              <h2 style={{margin:"0 0 4px",fontSize:18,fontWeight:800}}>{job.title}</h2>
+              <div style={{fontSize:13,color:"#94a3b8"}}>{job.company?.display_name} · {job.location?.display_name}</div>
+              {job.salary_min&&<div style={{fontSize:12,color:"#6ee7b7",marginTop:4,fontFamily:"monospace"}}>${(job.salary_min/1000).toFixed(0)}k–${(job.salary_max/1000).toFixed(0)}k/año</div>}
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"white",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:15}}>✕</button>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}><MatchBadge m={match}/><SrcBadge s={job.source}/><CVBadge v={cv}/><span style={{fontSize:10,color:"#94a3b8"}}>{timeAgo(job.created)}</span></div>
+        </div>
+        {match&&match.reasons?.length>0&&(
+          <div style={{padding:"14px 24px 0"}}>
+            <div style={{background:MATCH_META[match.tier].bg,border:`1px solid ${MATCH_META[match.tier].color}33`,borderRadius:8,padding:"10px 14px"}}>
+              <div style={{fontSize:11,fontWeight:800,color:MATCH_META[match.tier].color,marginBottom:5}}>ANÁLISIS DE COMPATIBILIDAD — {MATCH_META[match.tier].icon} {MATCH_META[match.tier].label} {match.tier!=="disq"?`(${match.score}/100)`:""}</div>
+              {match.reasons.map((r,i)=><div key={i} style={{fontSize:12,color:"#475569"}}>· {r}</div>)}
+            </div>
+          </div>
+        )}
+        <div style={{padding:"12px 24px",borderBottom:"1px solid #f1f5f9",display:"flex",gap:5,flexWrap:"wrap"}}>
+          {APP_STATUS.map(s=><button key={s} onClick={()=>onStatus(job.id,s)} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:99,border:"none",cursor:"pointer",background:status===s?STATUS_META[s].bg:"#f1f5f9",color:status===s?STATUS_META[s].color:"#94a3b8",outline:status===s?`2px solid ${STATUS_META[s].color}`:"none"}}>{STATUS_META[s].label}</button>)}
+        </div>
+        <div style={{padding:"12px 24px",borderBottom:"1px solid #f1f5f9",display:"flex",gap:8}}>
+          <button onClick={()=>setAi("cv")} style={{flex:1,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"white",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✦ Optimizar CV</button>
+          <button onClick={()=>setAi("cover")} style={{flex:1,background:"linear-gradient(135deg,#0ea5e9,#6366f1)",color:"white",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✉ Cover Letter</button>
+        </div>
+        <div style={{padding:"18px 24px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",letterSpacing:"0.1em",marginBottom:10}}>DESCRIPCIÓN</div>
+          <div style={{fontSize:13.5,lineHeight:1.8,color:"#334155",whiteSpace:"pre-wrap"}}>{job.description||"Sin descripción."}</div>
+        </div>
+        <div style={{padding:"12px 24px 28px",display:"flex",gap:8}}>
+          <a href={job.redirect_url} target="_blank" rel="noreferrer" style={{flex:1,background:"#0f172a",color:"white",borderRadius:10,padding:"13px",fontSize:14,fontWeight:700,textDecoration:"none",display:"block",textAlign:"center"}}>Postular ahora →</a>
+          <button onClick={()=>onSave(job)} style={{background:saved?"#fef3c7":"#f1f5f9",color:saved?"#b45309":"#64748b",border:"none",borderRadius:10,padding:"13px 16px",fontSize:13,cursor:"pointer",fontWeight:600}}>{saved?"🔖":"🤍"}</button>
+        </div>
+      </div>
+    </div>
+    {ai&&<AIPanel job={job} type={ai} onClose={()=>setAi(null)}/>}
+  </>);
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+function App(){
+  const[tab,setTab]=useState("search");
+  const[query,setQuery]=useState("strategic alliances manager");
+  const[country,setCountry]=useState("gb");
+  const[jobs,setJobs]=useState(MOCK_JOBS);
+  const[loading,setLoading]=useState(false);
+  const[sel,setSel]=useState(null);
+  const[selMatch,setSelMatch]=useState(null);
+  const[saved,setSaved]=useState({});
+  const[statuses,setStatuses]=useState({});
+  const[alerts,setAlerts]=useState(false);
+  const[lastPoll,setLastPoll]=useState(null);
+  const[newCount,setNewCount]=useState(0);
+  const[appId]=useState("1b9c423b");
+  const[appKey]=useState("46b3df50bfda17aa4077d35ab942f857");
+  const[sources,setSources]=useState(["remotive","muse","adzuna"]);
+  const[srcErrors,setSrcErrors]=useState({});
+  const[region,setRegion]=useState("all");
+  const[matchFilter,setMatchFilter]=useState("all");
+  const[hideDisq,setHideDisq]=useState(true);
+  const[sortBy,setSortBy]=useState("match");
+  const[showCfg,setShowCfg]=useState(false);
+  const pollRef=useRef(null);
+  const prevIds=useRef(new Set());
+
+  const jobsWithMatch=useMemo(()=>jobs.map(j=>({job:j,match:computeMatch(j)})),[jobs]);
+
+  const filtered=useMemo(()=>{
+    let list=jobsWithMatch.filter(({job,match})=>{
+      if(hideDisq&&match.tier==="disq") return false;
+      if(matchFilter!=="all"&&match.tier!==matchFilter) return false;
+      if(region!=="all"&&!regionMatch(job,region)) return false;
+      return true;
+    });
+    if(sortBy==="match") list.sort((a,b)=>MATCH_META[a.match.tier].order-MATCH_META[b.match.tier].order||b.match.score-a.match.score);
+    else list.sort((a,b)=>new Date(b.job.created)-new Date(a.job.created));
+    return list;
+  },[jobsWithMatch,hideDisq,matchFilter,region,sortBy]);
+
+  const matchCounts=useMemo(()=>{
+    const c={all:0,strong:0,close:0,weak:0};
+    jobsWithMatch.forEach(({match})=>{if(match.tier!=="disq"){c.all++;c[match.tier]=(c[match.tier]||0)+1;}});
+    return c;
+  },[jobsWithMatch]);
+
+  const runSearch=useCallback(async(silent=false)=>{
+    if(!silent) setLoading(true);
+    const res=[],errs={},tasks=[];
+    if(sources.includes("remotive")) tasks.push(fetchRemotive(query).then(r=>res.push(...r)).catch(()=>{errs.remotive="No disponible";}));
+    if(sources.includes("muse"))     tasks.push(fetchMuse(query).then(r=>res.push(...r)).catch(()=>{errs.muse="No disponible";}));
+    if(sources.includes("adzuna"))   tasks.push(fetchAdzuna(query,country,appId,appKey).then(r=>res.push(...r)).catch(()=>{errs.adzuna="Error API";}));
+    await Promise.allSettled(tasks);
+    setSrcErrors(errs);
+    const sorted=res.sort((a,b)=>new Date(b.created)-new Date(a.created));
+    const final=sorted.length>0?sorted:MOCK_JOBS;
+    if(silent){const n=final.filter(j=>!prevIds.current.has(j.id));if(n.length)setNewCount(c=>c+n.length);}
+    prevIds.current=new Set(final.map(j=>j.id));
+    setJobs(final);setLastPoll(new Date());
+    if(!silent) setLoading(false);
+  },[query,country,appId,appKey,sources]);
+
+  useEffect(()=>{
+    if(alerts) pollRef.current=setInterval(()=>runSearch(true),5*60*1000);
+    else clearInterval(pollRef.current);
+    return()=>clearInterval(pollRef.current);
+  },[alerts,runSearch]);
+
+  const toggleSave=job=>setSaved(p=>{const n={...p};if(n[job.id])delete n[job.id];else n[job.id]=job;return n;});
+  const setStatus=(id,s)=>setStatuses(p=>({...p,[id]:s}));
+  const openJob=(job,match)=>{setSel(job);setSelMatch(match);};
+
+  const savedList=Object.values(saved);
+  const appliedList=Object.entries(statuses).filter(([,s])=>s!=="saved").map(([id])=>saved[id]||jobs.find(j=>j.id===id)).filter(Boolean);
+  const srcCount=jobs.reduce((a,j)=>{a[j.source]=(a[j.source]||0)+1;return a;},{});
+
+  const Card=({job,match})=>{
+    const cv=detectCV(job);const fresh=isRecent(job.created);const m=MATCH_META[match?.tier||"weak"];
+    return(<div onClick={()=>openJob(job,match)} style={{background:"white",border:`1px solid ${fresh?"#bfdbfe":"#e2e8f0"}`,borderLeft:`4px solid ${m.color}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",position:"relative",opacity:match?.tier==="disq"?0.4:1,marginBottom:8,transition:"box-shadow 0.15s"}}
+      onMouseEnter={e=>{if(match?.tier!=="disq")e.currentTarget.style.boxShadow="0 4px 18px rgba(0,0,0,0.1)";}}
+      onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";}}>
+      {fresh&&<div style={{position:"absolute",top:10,right:38,background:"#dbeafe",color:"#1d4ed8",fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:99}}>⚡ NUEVO</div>}
+      <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:3,paddingRight:52}}>{job.title}</div>
+      <div style={{fontSize:12,color:"#475569",marginBottom:8}}>{job.company?.display_name} · {job.location?.display_name}</div>
+      <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
+        <MatchBadge m={match}/><SrcBadge s={job.source}/><CVBadge v={cv}/>
+        {job.salary_min&&<span style={{fontSize:10,color:"#64748b",fontFamily:"monospace"}}>${(job.salary_min/1000).toFixed(0)}k–${(job.salary_max/1000).toFixed(0)}k</span>}
+        <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{timeAgo(job.created)}</span>
+      </div>
+      <div onClick={e=>{e.stopPropagation();toggleSave(job);}} style={{position:"absolute",bottom:12,right:12,fontSize:15,cursor:"pointer"}}>{saved[job.id]?"🔖":"🤍"}</div>
+    </div>);
+  };
+
+  return(<div style={{minHeight:"100vh",background:"#f8fafc"}}>
+    {/* HEADER */}
+    <div style={{background:"linear-gradient(135deg,#0f172a,#1e293b)",padding:"18px 18px 0",color:"white"}}>
+      <div style={{maxWidth:820,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+          <div>
+            <div style={{fontSize:10,fontWeight:800,color:"#6366f1",letterSpacing:"0.15em",marginBottom:2}}>JOB HUNT DASHBOARD</div>
+            <div style={{fontSize:20,fontWeight:800}}>Agustín Preuss</div>
+            <div style={{fontSize:11,color:"#94a3b8"}}>Strategic Alliances · Commercial Strategy · Aviation</div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+            {newCount>0&&<div style={{background:"#ef4444",color:"white",borderRadius:99,fontSize:10,fontWeight:800,padding:"2px 8px",animation:"pulse 1.5s infinite"}}>+{newCount} nuevos</div>}
+            <button onClick={()=>{setAlerts(a=>!a);if(!alerts)runSearch(false);}} style={{background:alerts?"#059669":"rgba(255,255,255,0.1)",border:"none",color:"white",borderRadius:8,padding:"7px 11px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              {alerts?<><span style={{width:7,height:7,borderRadius:"50%",background:"#6ee7b7",animation:"pulse 1.5s infinite",display:"inline-block"}}/>ON</>:<>🔔 Alertas</>}
+            </button>
+            <button onClick={()=>setShowCfg(s=>!s)} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"white",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:14}}>⚙</button>
+          </div>
+        </div>
+        {showCfg&&<div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:14,marginBottom:12,border:"1px solid rgba(255,255,255,0.1)"}}>
+          <div style={{fontSize:10,fontWeight:800,color:"#6366f1",marginBottom:8}}>FUENTES ACTIVAS</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {["adzuna","remotive","muse"].map(s=>{const m=SOURCE_META[s];const on=sources.includes(s);return<button key={s} onClick={()=>setSources(p=>p.includes(s)?p.filter(x=>x!==s):[...p,s])} style={{background:on?`${m.color}25`:"rgba(255,255,255,0.07)",color:on?m.color:"#64748b",border:`1px solid ${on?m.color+"44":"transparent"}`,borderRadius:99,fontSize:11,fontWeight:700,padding:"4px 12px",cursor:"pointer"}}>{m.dot} {m.name}</button>;})}
+          </div>
+          {Object.entries(srcErrors).map(([k,v])=><div key={k} style={{fontSize:10,color:"#f87171",marginTop:6}}>⚠ {k}: {v}</div>)}
+        </div>}
+        <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:10,fontWeight:700,color:"#475569"}}>FUENTES:</span>
+          {["adzuna","remotive","muse"].map(s=>{const m=SOURCE_META[s];const on=sources.includes(s);return<span key={s} style={{background:on?`${m.color}20`:"rgba(255,255,255,0.07)",color:on?m.color:"#64748b",borderRadius:99,fontSize:10,fontWeight:700,padding:"2px 9px"}}>{m.dot} {m.name}</span>;})}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runSearch()} placeholder="cargo, skills, empresa..." style={{flex:1,padding:"10px 13px",borderRadius:"9px 9px 0 0",border:"none",borderBottom:"2px solid #6366f1",background:"rgba(255,255,255,0.08)",color:"white",fontSize:13,outline:"none"}}/>
+          <select value={country} onChange={e=>setCountry(e.target.value)} style={{padding:"10px 8px",borderRadius:"9px 9px 0 0",border:"none",borderBottom:"2px solid #6366f1",background:"rgba(255,255,255,0.08)",color:"white",fontSize:12,cursor:"pointer",outline:"none"}}>
+            {[["us","🇺🇸 USA"],["gb","🇬🇧 UK"],["au","🇦🇺 Australia"],["ca","🇨🇦 Canada"],["de","🇩🇪 Germany"],["es","🇪🇸 Spain"],["br","🇧🇷 Brazil"]].map(([c,n])=><option key={c} value={c} style={{background:"#1e293b"}}>{n}</option>)}
+          </select>
+          <button onClick={()=>runSearch()} disabled={loading} style={{background:"#6366f1",color:"white",border:"none",borderRadius:"9px 9px 0 0",padding:"10px 16px",fontSize:13,fontWeight:700,cursor:"pointer",minWidth:65}}>
+            {loading?<span style={{display:"inline-block",width:13,height:13,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"white",animation:"spin 0.7s linear infinite"}}/>:"Buscar"}
+          </button>
+        </div>
+        <div style={{display:"flex",gap:0}}>
+          {[["search","🔍","Buscar"],["saved",`🔖 Guardados${savedList.length?` (${savedList.length})`:""}`,`🔖 Guardados${savedList.length?` (${savedList.length})`:""}`],["tracker",`📊 Tracker${appliedList.length?` (${appliedList.length})`:""}`,""]].map(([id,icon,lbl])=>{
+            const label=id==="search"?"🔍 Buscar":id==="saved"?`🔖 Guardados${savedList.length?` (${savedList.length})`:""}`:`📊 Tracker${appliedList.length?` (${appliedList.length})`:""}`; 
+            return<button key={id} onClick={()=>setTab(id)} style={{background:tab===id?"white":"transparent",color:tab===id?"#0f172a":"#94a3b8",border:"none",padding:"9px 14px",cursor:"pointer",fontSize:12,fontWeight:tab===id?700:500,borderRadius:"8px 8px 0 0"}}>{label}</button>;
+          })}
+          {lastPoll&&<div style={{marginLeft:"auto",padding:"9px 12px",fontSize:10,color:alerts?"#6ee7b7":"#475569",alignSelf:"center"}}>{alerts?"⟳ ":""}{lastPoll.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}</div>}
+        </div>
+      </div>
+    </div>
+
+    {/* CONTENT */}
+    <div style={{maxWidth:820,margin:"0 auto",padding:"16px 12px"}}>
+      {tab==="search"&&<>
+        {/* Filters */}
+        <div style={{background:"white",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",letterSpacing:"0.1em",marginBottom:7}}>REGIÓN</div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {REGIONS.map(r=><button key={r.id} onClick={()=>setRegion(r.id)} style={{background:region===r.id?"#0f172a":"#f8fafc",color:region===r.id?"white":"#475569",border:`1px solid ${region===r.id?"#0f172a":"#e2e8f0"}`,borderRadius:99,fontSize:11,fontWeight:600,padding:"5px 12px",cursor:"pointer"}}>{r.icon} {r.label}</button>)}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",letterSpacing:"0.1em",marginBottom:7}}>COMPATIBILIDAD</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {[["all","Todos","#475569"],["strong","✅ Fuerte","#059669"],["close","🔶 Cerca","#d97706"],["weak","⬜ Bajo","#94a3b8"]].map(([id,label,color])=><button key={id} onClick={()=>setMatchFilter(id)} style={{background:matchFilter===id?`${color}18`:"#f8fafc",color:matchFilter===id?color:"#94a3b8",border:`1px solid ${matchFilter===id?color+"44":"#e2e8f0"}`,borderRadius:99,fontSize:11,fontWeight:700,padding:"4px 11px",cursor:"pointer"}}>{label} {matchCounts[id]!==undefined?`(${matchCounts[id]})`:""}</button>)}
+              </div>
+            </div>
+            <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",gap:7}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#475569",cursor:"pointer"}}><input type="checkbox" checked={hideDisq} onChange={e=>setHideDisq(e.target.checked)} style={{accentColor:"#6366f1"}}/>Ocultar descartados</label>
+              <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                <span style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>ORDEN:</span>
+                {[["match","Match"],["date","Fecha"]].map(([v,l])=><button key={v} onClick={()=>setSortBy(v)} style={{fontSize:10,fontWeight:700,padding:"3px 9px",borderRadius:99,border:"none",cursor:"pointer",background:sortBy===v?"#0f172a":"#f1f5f9",color:sortBy===v?"white":"#64748b"}}>{l}</button>)}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:12,color:"#94a3b8"}}>{filtered.length} trabajos</span>
+          {Object.entries(srcCount).map(([s,c])=><span key={s} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:99,padding:"2px 10px",fontSize:10,fontWeight:600,color:SOURCE_META[s]?.color||"#64748b"}}>{SOURCE_META[s]?.dot} {c} {SOURCE_META[s]?.name}</span>)}
+        </div>
+        {jobs[0]?.source==="demo"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>💡 Datos demo — haz click en <strong>Buscar</strong> para resultados reales</div>}
+        {filtered.length===0&&<div style={{textAlign:"center",padding:"50px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🔍</div>Sin resultados con estos filtros</div>}
+        {filtered.map(({job,match})=><Card key={job.id} job={job} match={match}/>)}
+      </>}
+
+      {tab==="saved"&&(savedList.length===0
+        ?<div style={{textAlign:"center",padding:"60px 0",color:"#94a3b8"}}><div style={{fontSize:36,marginBottom:10}}>🔖</div>Sin trabajos guardados</div>
+        :savedList.map(job=><Card key={job.id} job={job} match={computeMatch(job)}/>)
+      )}
+
+      {tab==="tracker"&&(appliedList.length===0
+        ?<div style={{textAlign:"center",padding:"60px 0",color:"#94a3b8"}}><div style={{fontSize:36,marginBottom:10}}>📊</div><div style={{fontSize:14}}>Sin postulaciones trackeadas</div><div style={{fontSize:12,marginTop:4}}>Abre un trabajo y cambia su estado</div></div>
+        :APP_STATUS.filter(s=>s!=="saved").map(status=>{
+          const inS=Object.entries(statuses).filter(([,s])=>s===status).map(([id])=>saved[id]||jobs.find(j=>j.id===id)).filter(Boolean);
+          if(!inS.length) return null;
+          const sm=STATUS_META[status];
+          return<div key={status} style={{marginBottom:20}}>
+            <div style={{fontSize:11,fontWeight:800,letterSpacing:"0.08em",color:sm.color,marginBottom:7}}>{sm.label.toUpperCase()} ({inS.length})</div>
+            {inS.map(job=>{const m=computeMatch(job);return<div key={job.id} onClick={()=>openJob(job,m)} style={{background:sm.bg,border:`1px solid ${sm.color}33`,borderLeft:`4px solid ${sm.color}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",marginBottom:7}}>
+              <div style={{fontSize:13,fontWeight:700}}>{job.title}</div>
+              <div style={{fontSize:11,color:"#475569",marginTop:2}}>{job.company?.display_name} · {job.location?.display_name}</div>
+              <div style={{display:"flex",gap:5,marginTop:6}}><MatchBadge m={m}/><SrcBadge s={job.source}/><span style={{fontSize:10,color:"#64748b"}}>{timeAgo(job.created)}</span></div>
+            </div>;})}
+          </div>;
+        })
+      )}
+    </div>
+
+    {sel&&<JobModal job={sel} match={selMatch} onClose={()=>setSel(null)} onStatus={setStatus} status={statuses[sel.id]} onSave={toggleSave} saved={!!saved[sel.id]}/>}
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
